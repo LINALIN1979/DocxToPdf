@@ -30,13 +30,18 @@ namespace DocxToPdf
 
         /// <summary>
         /// Get whether this cell is the start of the row.
+        /// rowStart is set to the main cell of col-spanned cells (i.e. the first cell of col-spanned cells).
+        /// gridBefore cells do not set as rowStart.
         /// </summary>
         public bool rowStart = false;
 
         /// <summary>
         /// Get whether this cell is the end of the row.
+        /// rowEnd is set to the main cell of col-spanned cells (i.e. the first cell of col-spanned cells).
+        /// gridAfter cells do not set as rowEnd.
         /// </summary>
         public bool rowEnd = false;
+
         public Word.TableRow row = null; // point to Word.TableRow
         public Word.TableCell cell = null; // point to Word.TableCell
         public List<iTSText.IElement> elements = new List<iTSText.IElement>();
@@ -233,7 +238,8 @@ namespace DocxToPdf
             if (cells.Count <= 0)
                 return;
 
-            // prepare table conditional formatting (border), must be called before applyCellBorders()
+            // prepare table conditional formatting (border), which will be used in
+            // applyCellBorders() so must be called before applyCellBorders()
             this.rollingUpTableBorders();
 
             // ====== Resolve cell border conflict ======
@@ -256,8 +262,8 @@ namespace DocxToPdf
 
                     if (me.Borders == null)
                         me.Borders = this.applyCellBorders(me.cell.Descendants<Word.TableCellBorders>().FirstOrDefault(),
-                            (me.colId == 0),
-                            (me.colId + this.GetColSpan(me.cellId) == this.ColumnLength),
+                            (me.colId == 0) | me.rowStart,
+                            (me.colId + this.GetColSpan(me.cellId) == this.ColumnLength) | me.rowEnd,
                             (me.rowId == 0),
                             (me.rowId + this.GetRowSpan(me.cellId) == this.RowLength)
                             );
@@ -265,7 +271,8 @@ namespace DocxToPdf
                     int rowspan = this.GetRowSpan(me.cellId);
 
                     if ((c + (colspan - 1) + 1) < this.ColumnLength) // not last column
-                    { // get the cell at the right side of me
+                    {
+                        // get the cell at the right side of me
                         List<TableHelperCell> rights = new List<TableHelperCell>();
                         for (int i = 0; i < rowspan; i++)
                         {
@@ -279,60 +286,28 @@ namespace DocxToPdf
                             {
                                 if (right.Borders == null)
                                     right.Borders = this.applyCellBorders(right.cell.Descendants<Word.TableCellBorders>().FirstOrDefault(),
-                                        (right.colId == 0),
-                                        (right.colId + this.GetColSpan(right.cellId) == this.ColumnLength),
+                                        (right.colId == 0) | right.rowStart,
+                                        (right.colId + this.GetColSpan(right.cellId) == this.ColumnLength) | right.rowEnd,
                                         (right.rowId == 0),
                                         (right.rowId + this.GetRowSpan(right.cellId) == this.RowLength)
                                         );
 
-                                // compare line style
-                                int weight1 = 0, weight2 = 0;
-                                if (me.Borders.InsideVerticalBorder != null && me.Borders.InsideVerticalBorder.Val != null)
-                                    weight1 = (BorderNumber.ContainsKey(me.Borders.InsideVerticalBorder.Val)) ?
-                                        BorderNumber[me.Borders.InsideVerticalBorder.Val] : 1;
-                                else if (me.Borders.RightBorder != null && me.Borders.RightBorder.Val != null)
-                                    weight1 = (BorderNumber.ContainsKey(me.Borders.RightBorder.Val)) ?
-                                        BorderNumber[me.Borders.RightBorder.Val] : 1;
-                                if (right.Borders.InsideVerticalBorder != null && right.Borders.InsideVerticalBorder.Val != null)
-                                    weight2 = (BorderNumber.ContainsKey(right.Borders.InsideVerticalBorder.Val)) ?
-                                        BorderNumber[right.Borders.InsideVerticalBorder.Val] : 1;
-                                else if (right.Borders.LeftBorder != null && right.Borders.LeftBorder.Val != null)
-                                    weight2 = (BorderNumber.ContainsKey(right.Borders.LeftBorder.Val)) ?
-                                        BorderNumber[right.Borders.LeftBorder.Val] : 1;
-
-                                // larger weitht wins
-                                if (weight1 > weight2)
+                                bool meWin = compareBorder(me.Borders, right.Borders, compareDirection.Horizontal);
+                                if (meWin)
                                     StyleHelper.CopyAttributes(right.Borders.LeftBorder, me.Borders.RightBorder);
-                                else if (weight1 == weight2)
-                                { // compare color brightness
-                                    // TODO: current brightness implementation is based on Luminance 
-                                    //  but ISO $17.4.66 defines the comparisons should be
-                                    //  1. R+B+2G, 2. B+2G, 3. G
-                                    float brightness1 = 0f, brightness2 = 0f;
-                                    if (me.Borders.InsideVerticalBorder.Color != null && me.Borders.InsideVerticalBorder.Color.HasValue)
-                                        brightness1 = Tools.RgbBrightness(me.Borders.InsideVerticalBorder.Color.Value);
-                                    else if (me.Borders.RightBorder.Color != null && me.Borders.RightBorder.Color.HasValue)
-                                        brightness1 = Tools.RgbBrightness(me.Borders.RightBorder.Color.Value);
-                                    if (right.Borders.InsideVerticalBorder.Color != null && right.Borders.InsideVerticalBorder.Color.HasValue)
-                                        brightness2 = Tools.RgbBrightness(right.Borders.InsideVerticalBorder.Color.Value);
-                                    else if (right.Borders.LeftBorder.Color != null && right.Borders.LeftBorder.Color.HasValue)
-                                        brightness2 = Tools.RgbBrightness(right.Borders.LeftBorder.Color.Value);
-
-                                    // smaller brightness wins
-                                    if (brightness1 <= brightness2)
-                                        StyleHelper.CopyAttributes(right.Borders.LeftBorder, me.Borders.RightBorder);
-                                }
                             }
                             me.Borders.RightBorder.ClearAllAttributes();
                         }
                     }
 
-                    if ((r + (rowspan - 1) + 1) < this.RowLength) // not last row
-                    { // get the cell below me
+                    // can't bypass row-spanned cells because they still have tcBorders property
+                    if ((r + 1) < this.RowLength) // not last row
+                    {
+                        // get the cell below me
                         List<TableHelperCell> bottoms = new List<TableHelperCell>();
                         for (int i = 0; i < colspan; i++)
                         {
-                            TableHelperCell tmp = this.GetCell(r + (rowspan - 1) + 1, c + i);
+                            TableHelperCell tmp = this.GetCell(r + 1, c + i);
                             if (tmp != null && !tmp.Blank) bottoms.Add(tmp);
                         }
 
@@ -340,53 +315,159 @@ namespace DocxToPdf
                         {
                             if (bottom.Borders == null)
                                 bottom.Borders = this.applyCellBorders(bottom.cell.Descendants<Word.TableCellBorders>().FirstOrDefault(),
-                                    (bottom.colId == 0),
-                                    (bottom.colId + this.GetColSpan(bottom.cellId) == this.ColumnLength),
+                                    (bottom.colId == 0) | bottom.rowStart,
+                                    (bottom.colId + this.GetColSpan(bottom.cellId) == this.ColumnLength) | bottom.rowEnd,
                                     (bottom.rowId == 0),
                                     (bottom.rowId + this.GetRowSpan(bottom.cellId) == this.RowLength)
                                     );
 
-                            // compare line style
-                            int weight1 = 0, weight2 = 0;
-                            if (me.Borders.InsideHorizontalBorder != null && me.Borders.InsideHorizontalBorder.Val != null)
-                                weight1 = (BorderNumber.ContainsKey(me.Borders.InsideHorizontalBorder.Val)) ?
-                                    BorderNumber[me.Borders.InsideHorizontalBorder.Val] : 1;
-                            else if (me.Borders.BottomBorder != null && me.Borders.BottomBorder.Val != null)
-                                weight1 = (BorderNumber.ContainsKey(me.Borders.BottomBorder.Val)) ?
-                                    BorderNumber[me.Borders.BottomBorder.Val] : 1;
-                            if (bottom.Borders.InsideHorizontalBorder != null && bottom.Borders.InsideHorizontalBorder.Val != null)
-                                weight2 = (BorderNumber.ContainsKey(bottom.Borders.InsideHorizontalBorder.Val)) ?
-                                    BorderNumber[bottom.Borders.InsideHorizontalBorder.Val] : 1;
-                            else if (bottom.Borders.TopBorder != null && bottom.Borders.TopBorder.Val != null)
-                                weight2 = (BorderNumber.ContainsKey(bottom.Borders.TopBorder.Val)) ?
-                                    BorderNumber[bottom.Borders.TopBorder.Val] : 1;
-
-                            // larger weight wins
-                            if (weight1 > weight2)
+                            bool meWin = compareBorder(me.Borders, bottom.Borders, compareDirection.Vertical);
+                            if (meWin)
                                 StyleHelper.CopyAttributes(bottom.Borders.TopBorder, me.Borders.BottomBorder);
-                            else if (weight1 == weight2)
-                            { // compare color brightness
-                                float brightness1 = 0f, brightness2 = 0f;
-                                if (me.Borders.InsideHorizontalBorder.Color != null && me.Borders.InsideHorizontalBorder.Color.HasValue)
-                                    brightness1 = Tools.RgbBrightness(me.Borders.InsideHorizontalBorder.Color.Value);
-                                else if (me.Borders.BottomBorder.Color != null && me.Borders.BottomBorder.Color.HasValue)
-                                    brightness1 = Tools.RgbBrightness(me.Borders.BottomBorder.Color.Value);
-                                if (bottom.Borders.InsideHorizontalBorder.Color != null && bottom.Borders.InsideHorizontalBorder.Color.HasValue)
-                                    brightness2 = Tools.RgbBrightness(bottom.Borders.InsideHorizontalBorder.Color.Value);
-                                else if (bottom.Borders.TopBorder.Color != null && bottom.Borders.TopBorder.Color.HasValue)
-                                    brightness2 = Tools.RgbBrightness(bottom.Borders.TopBorder.Color.Value);
-
-                                // smaller brightness wins
-                                if (brightness1 <= brightness2)
-                                    StyleHelper.CopyAttributes(bottom.Borders.TopBorder, me.Borders.BottomBorder);
-                            }
                         }
-                        me.Borders.BottomBorder.ClearAllAttributes();
                     }
                 }
             }
 
+            // re-process each cell's border conflict with its bottom cell
+            for (int i = 0; i < this.cells[this.cells.Count - 1].cellId; i++)
+            {
+                TableHelperCell me = this.GetCellByCellId(i);
+                if (me.Blank) // ignore gridBefore/gridAfter cells
+                    continue;
+                
+                if (me.RowSpan > 1)
+                { // merge bottom border from the last cell of row-spanned cells
+                    TableHelperCell meRowEnd = this.GetCell(me.rowId + (me.RowSpan - 1), me.colId);
+                    if (meRowEnd != null && meRowEnd.Borders != null && meRowEnd.Borders.BottomBorder != null)
+                        StyleHelper.CopyAttributes(me.Borders.BottomBorder, meRowEnd.Borders.BottomBorder);
+                }
+
+                if (me.rowId + me.RowSpan < this.RowLength)
+                { // if me is not at the last row, compare the border with the cell below it
+                    TableHelperCell bottom = this.GetCellByCellId(this.GetCell(me.rowId + me.RowSpan, me.colId).cellId);
+                    bool meWin = compareBorder(me.Borders, bottom.Borders, compareDirection.Vertical);
+                    if (!meWin)
+                        me.Borders.BottomBorder.ClearAllAttributes();
+                }
+            }
+
+            // ====== Adjust table columns width by their content ======
+
             this.adjustTableColumnsWidth();
+        }
+
+        private enum compareDirection { Horizontal, Vertical, }
+        /// <summary>
+        /// Compare border and return who is win.
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="b"></param>
+        /// <param name="dir"></param>
+        /// <returns>Return ture means a win, false means b win.</returns>
+        private bool compareBorder(Word.TableCellBorders a, Word.TableCellBorders b, compareDirection dir)
+        {
+            // compare line style
+            int weight1 = 0, weight2 = 0;
+            if (dir == compareDirection.Horizontal)
+            {
+                if (a.RightBorder != null && a.RightBorder.Val != null)
+                    weight1 = (BorderNumber.ContainsKey(a.RightBorder.Val)) ? BorderNumber[a.RightBorder.Val] : 1;
+                else if (a.InsideVerticalBorder != null && a.InsideVerticalBorder.Val != null)
+                    weight1 = (BorderNumber.ContainsKey(a.InsideVerticalBorder.Val)) ? BorderNumber[a.InsideVerticalBorder.Val] : 1;
+
+                if (b.LeftBorder != null && b.LeftBorder.Val != null)
+                    weight2 = (BorderNumber.ContainsKey(b.LeftBorder.Val)) ? BorderNumber[b.LeftBorder.Val] : 1;
+                else if (b.InsideVerticalBorder != null && b.InsideVerticalBorder.Val != null)
+                    weight2 = (BorderNumber.ContainsKey(b.InsideVerticalBorder.Val)) ? BorderNumber[b.InsideVerticalBorder.Val] : 1;
+            }
+            else if (dir == compareDirection.Vertical)
+            {
+                if (a.BottomBorder != null && a.BottomBorder.Val != null)
+                    weight1 = (BorderNumber.ContainsKey(a.BottomBorder.Val)) ? BorderNumber[a.BottomBorder.Val] : 1;
+                else if (a.InsideHorizontalBorder != null && a.InsideHorizontalBorder.Val != null)
+                    weight1 = (BorderNumber.ContainsKey(a.InsideHorizontalBorder.Val)) ? BorderNumber[a.InsideHorizontalBorder.Val] : 1;
+                
+                if (b.TopBorder != null && b.TopBorder.Val != null)
+                    weight2 = (BorderNumber.ContainsKey(b.TopBorder.Val)) ? BorderNumber[b.TopBorder.Val] : 1;
+                else if (b.InsideHorizontalBorder != null && b.InsideHorizontalBorder.Val != null)
+                    weight2 = (BorderNumber.ContainsKey(b.InsideHorizontalBorder.Val)) ? BorderNumber[b.InsideHorizontalBorder.Val] : 1;
+            }
+
+            if (weight1 > weight2)
+                return true;
+            else if (weight2 > weight1)
+                return false;
+            
+            // compare width
+            float size1 = 0f, size2 = 0f;
+            if (dir == compareDirection.Horizontal)
+            {
+                if (a.RightBorder.Size != null && a.RightBorder.Size.HasValue)
+                    size1 = Tools.ConvertToPoint(a.RightBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                else if (a.InsideVerticalBorder.Size != null && a.InsideVerticalBorder.Size.HasValue)
+                    size1 = Tools.ConvertToPoint(a.InsideVerticalBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                
+                if (b.LeftBorder.Size != null && b.LeftBorder.Size.HasValue)
+                    size2 = Tools.ConvertToPoint(b.LeftBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                else if (b.InsideVerticalBorder.Size != null && b.InsideVerticalBorder.Size.HasValue)
+                    size2 = Tools.ConvertToPoint(b.InsideVerticalBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+            }
+            else if (dir == compareDirection.Vertical)
+            {
+                if (a.BottomBorder.Size != null && a.BottomBorder.Size.HasValue)
+                    size1 = Tools.ConvertToPoint(a.BottomBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                else if (a.InsideHorizontalBorder.Size != null && a.InsideHorizontalBorder.Size.HasValue)
+                    size1 = Tools.ConvertToPoint(a.InsideHorizontalBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                
+                if (b.TopBorder.Size != null && b.TopBorder.Size.HasValue)
+                    size2 = Tools.ConvertToPoint(b.TopBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+                else if (b.InsideHorizontalBorder.Size != null && b.InsideHorizontalBorder.Size.HasValue)
+                    size2 = Tools.ConvertToPoint(b.InsideHorizontalBorder.Size.Value, Tools.SizeEnum.LineBorder, -1f);
+            }
+
+            if (size1 > size2)
+                return true;
+            else if (size2 > size1)
+                return false;
+
+            // compare brightness
+            //   TODO: current brightness implementation is based on Luminance 
+            //   but ISO $17.4.66 defines the comparisons should be
+            //   1. R+B+2G, 2. B+2G, 3. G
+            float brightness1 = 0f, brightness2 = 0f;
+            if (dir == compareDirection.Horizontal)
+            {
+                if (a.RightBorder.Color != null && a.RightBorder.Color.HasValue)
+                    brightness1 = Tools.RgbBrightness(a.RightBorder.Color.Value);
+                else if (a.InsideVerticalBorder.Color != null && a.InsideVerticalBorder.Color.HasValue)
+                    brightness1 = Tools.RgbBrightness(a.InsideVerticalBorder.Color.Value);
+
+                if (b.LeftBorder.Color != null && b.LeftBorder.Color.HasValue)
+                    brightness2 = Tools.RgbBrightness(b.LeftBorder.Color.Value);
+                else if (b.InsideVerticalBorder.Color != null && b.InsideVerticalBorder.Color.HasValue)
+                    brightness2 = Tools.RgbBrightness(b.InsideVerticalBorder.Color.Value);
+            }
+            else if (dir == compareDirection.Vertical)
+            {
+                if (a.BottomBorder.Color != null && a.BottomBorder.Color.HasValue)
+                    brightness1 = Tools.RgbBrightness(a.BottomBorder.Color.Value);
+                else if (a.InsideHorizontalBorder.Color != null && a.InsideHorizontalBorder.Color.HasValue)
+                    brightness1 = Tools.RgbBrightness(a.InsideHorizontalBorder.Color.Value);
+
+                if (b.TopBorder.Color != null && b.TopBorder.Color.HasValue)
+                    brightness2 = Tools.RgbBrightness(b.TopBorder.Color.Value);
+                else if (b.InsideHorizontalBorder.Color != null && b.InsideHorizontalBorder.Color.HasValue)
+                    brightness2 = Tools.RgbBrightness(b.InsideHorizontalBorder.Color.Value);
+            }
+
+            // smaller brightness wins
+            if (brightness1 < brightness2)
+                return true;
+            else if (brightness2 < brightness1)
+                return false;
+            
+            return false; // special trick, especially for vertical comparison
         }
 
         private void adjustTableColumnsWidth()
@@ -885,6 +966,20 @@ namespace DocxToPdf
         {
             int index = (row * this.ColumnLength) + col;
             return (index < this.cells.Count) ? this.cells[index] : null;
+        }
+
+        /// <summary>
+        /// Get cell object by cellId.
+        /// </summary>
+        /// <param name="cellId">Cell Id</param>
+        /// <returns></returns>
+        public TableHelperCell GetCellByCellId(int cellId)
+        {
+            List<TableHelperCell> cellsInRow = this.cells.FindAll(c => c.cellId == cellId).OrderBy(o => o.rowId).ToList();
+            if (cellsInRow.Count > 0)
+                return cellsInRow.FindAll(c => c.rowId == cellsInRow[0].rowId).OrderBy(o => o.colId).ToList()[0];
+            else
+                return null;
         }
 
         /// <summary>

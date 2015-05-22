@@ -1,6 +1,6 @@
 # DocxToPdf
 
-C# library for converting *.docx* to *.pdf*.
+C# library for converting *.docx* to *.pdf* without Office.
 
 ## Prerequisites ##
 
@@ -124,6 +124,11 @@ Below lists current support status of DOCX
   <td align="center"><font color="blue">V</font></td>
   <td>Known issues<br>1. Restart is not supported<br>2. Picture as numbering symbol is not supported<br>3. Numbering only supports Decimal/DecimalZero/LowerRoman/UpperRoman/TaiwaneseCountingThousand<br>4. Linked style is not supported</td>
  </tr>
+ <tr>
+  <td>- Text direction</td>
+  <td align="center"><font color="red">X</font></td>
+  <td></td>
+ </tr>
 
  <tr>
   <td colspan="3" bgcolor="black"><font color="white"><b>Table</b></font></td>
@@ -193,6 +198,11 @@ Below lists current support status of DOCX
   <td align="center"><font color="red">X</font></td>
   <td>i.e. formatting for firstColumn/firstRow/lastColumn/lastRow/noHBand/noVBand</td>
  </tr>
+ <tr>
+  <td>- Text direction</td>
+  <td align="center"><font color="red">X</font></td>
+  <td></td>
+ </tr>
 
  <tr>
   <td colspan="3" bgcolor="black"><font color="white"><b>Sections</b></font></td>
@@ -223,12 +233,17 @@ Below lists current support status of DOCX
   <td></td>
  </tr>
  <tr>
-  <td>Page margins</td>
+  <td>- Page margins</td>
   <td align="center"><font color="blue">V</font></td>
   <td></td>
  </tr>
  <tr>
-  <td>Page number</td>
+  <td>- Page number</td>
+  <td align="center"><font color="red">X</font></td>
+  <td></td>
+ </tr>
+ <tr>
+  <td>- Text direction</td>
   <td align="center"><font color="red">X</font></td>
   <td></td>
  </tr>
