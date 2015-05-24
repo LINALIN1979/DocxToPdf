@@ -237,6 +237,17 @@ namespace DocxToPdf
         }
 
         /// <summary>
+        /// Get current SectionProperties is the end or not.
+        /// </summary>
+        public bool IsCurrentSectPrTheEnd
+        {
+            get
+            {
+                return this.currentSectPr == (this.sections.Count - 1);
+            }
+        }
+
+        /// <summary>
         /// Get next SectionProperties.
         /// </summary>
         public Word.SectionProperties NextSectPr

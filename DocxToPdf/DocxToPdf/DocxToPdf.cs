@@ -377,6 +377,13 @@ namespace DocxToPdf
                         //}
                     }
                     previousIndex = currentIndex + 1;
+
+                    // If reach the end of SectPr, call NextSectPr results in CurrentSectPr
+                    // becomes null. When pdfDoc.close(), it calls OnEndPage() but no 
+                    // header/footer will be drawn because CurrentSectPr is null. So add
+                    // below check to avoid the problem.
+                    if (this.stHelper.IsCurrentSectPrTheEnd)
+                        break;
                 }
                 pdfDoc.Close();
             }
@@ -1860,11 +1867,14 @@ namespace DocxToPdf
                     float hdrMargin = (margin != null && margin.Header != null) ?
                         Tools.ConvertToPoint(margin.Header.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f) : 0f;
                     iTSPdf.ColumnText ct = new iTSPdf.ColumnText(writer.DirectContent);
+                    // in iTextSharp page coordinate concept, for Y-axis, the top edge of
+                    // the page has the maximum value (doc.PageSize.Height) and the 
+                    // bottom edge of the page is zero
                     iTSText.Rectangle rect = new iTSText.Rectangle(
                         doc.LeftMargin,
                         doc.PageSize.Height - hdrMargin,
-                        doc.LeftMargin + (doc.PageSize.Width - doc.LeftMargin - doc.RightMargin),
-                        doc.BottomMargin);
+                        doc.PageSize.Width - doc.RightMargin, // not the width, should be the maximum X coordinate
+                        doc.BottomMargin); // not the height, should be the smallest Y coordinate
                     ct.SetSimpleColumn(rect);
                     foreach (iTSText.IElement e in contents)
                         ct.AddElement(e);
