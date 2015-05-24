@@ -1690,65 +1690,49 @@ namespace DocxToPdf
                     // Border
                     //  top border
                     Word.TopBorder topbr = pcell.Borders.TopBorder;
-                    if (topbr == null || topbr.Val == null)
+                    if (topbr == null || topbr.Val == null ||
+                        topbr.Val.Value == Word.BorderValues.Nil || topbr.Val.Value == Word.BorderValues.None)
                         cell.Border &= ~iTSText.Rectangle.TOP_BORDER;
                     else
                     {
                         if (topbr.Color != null && topbr.Color.Value != "auto")
                             cell.BorderColorTop = new iTSTextColor(Convert.ToInt32(topbr.Color.Value, 16));
-                        if (topbr.Val != null)
-                        {
-                            if (topbr.Val == "nil" || topbr.Val == "none")
-                                cell.Border &= ~iTSText.Rectangle.TOP_BORDER;
-                        }
                         if (topbr.Size != null)
                             cell.BorderWidthTop = Tools.ConvertToPoint(topbr.Size.Value, Tools.SizeEnum.LineBorder, -1f);
                     }
                     //  bottom border
                     Word.BottomBorder bottombr = pcell.Borders.BottomBorder;
-                    if (bottombr == null || bottombr.Val == null)
+                    if (bottombr == null || bottombr.Val == null ||
+                        bottombr.Val.Value == Word.BorderValues.Nil || bottombr.Val.Value == Word.BorderValues.None)
                         cell.Border &= ~iTSText.Rectangle.BOTTOM_BORDER;
                     else
                     {
                         if (bottombr.Color != null && bottombr.Color.Value != "auto")
                             cell.BorderColorBottom = new iTSTextColor(Convert.ToInt32(bottombr.Color.Value, 16));
-                        if (bottombr.Val != null)
-                        {
-                            if (bottombr.Val == "nil" || bottombr.Val == "none")
-                                cell.Border &= ~iTSText.Rectangle.BOTTOM_BORDER;
-                        }
                         if (bottombr.Size != null)
                             cell.BorderWidthBottom = Tools.ConvertToPoint(bottombr.Size.Value, Tools.SizeEnum.LineBorder, -1f);
                     }
                     //  left border
                     Word.LeftBorder leftbr = pcell.Borders.LeftBorder;
-                    if (leftbr == null || leftbr.Val == null)
+                    if (leftbr == null || leftbr.Val == null ||
+                        leftbr.Val.Value == Word.BorderValues.Nil || leftbr.Val.Value == Word.BorderValues.None)
                         cell.Border &= ~iTSText.Rectangle.LEFT_BORDER;
                     else
                     {
                         if (leftbr.Color != null && leftbr.Color.Value != "auto")
                             cell.BorderColorLeft = new iTSTextColor(Convert.ToInt32(leftbr.Color.Value, 16));
-                        if (leftbr.Val != null)
-                        {
-                            if (leftbr.Val == "nil" || leftbr.Val == "none")
-                                cell.Border &= ~iTSText.Rectangle.LEFT_BORDER;
-                        }
                         if (leftbr.Size != null)
                             cell.BorderWidthLeft = Tools.ConvertToPoint(leftbr.Size.Value, Tools.SizeEnum.LineBorder, -1f);
                     }
                     //  right border
                     Word.RightBorder rightbr = pcell.Borders.RightBorder;
-                    if (rightbr == null || rightbr.Val == null)
+                    if (rightbr == null || rightbr.Val == null ||
+                        rightbr.Val.Value == Word.BorderValues.Nil || rightbr.Val.Value == Word.BorderValues.None)
                         cell.Border &= ~iTSText.Rectangle.RIGHT_BORDER;
                     else
                     {
                         if (rightbr.Color != null && rightbr.Color.Value != "auto")
                             cell.BorderColorRight = new iTSTextColor(Convert.ToInt32(rightbr.Color.Value, 16));
-                        if (rightbr.Val != null)
-                        {
-                            if (rightbr.Val == "nil" || rightbr.Val == "none")
-                                cell.Border &= ~iTSText.Rectangle.RIGHT_BORDER;
-                        }
                         if (rightbr.Size != null)
                             cell.BorderWidthRight = Tools.ConvertToPoint(rightbr.Size.Value, Tools.SizeEnum.LineBorder, -1f);
                     }
