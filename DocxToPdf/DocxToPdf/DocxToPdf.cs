@@ -327,25 +327,7 @@ namespace DocxToPdf
                             {
                                 if (element.GetType() == typeof(iTSPdf.PdfPTable))
                                 {
-                                    iTSPdf.PdfPTable table = element as iTSPdf.PdfPTable;
-                                    // http://stackoverflow.com/questions/1364435/itextsharp-splitlate-splitrows
-                                    // SplitLate = true (default), the table will be split before the next row that does fit on the page.
-                                    // SplitLate = false, the row that does not fully fit on the page will be split.
-                                    // SplitRows = true (default), the row that does not fit on a page will be split.
-                                    // SplitRows = false the row will be omitted.
-                                    //  SplitLate && SplitRows: A row that does not fit on the page will be started on the next page and eventually split if it does not fit on that page either.
-                                    //  SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
-                                    //  !SplitLate && SplitRows: A row that does not fit on the page will be split and continued on the next page and split again if it too large for the next page too.
-                                    //  !SplitLate && !SplitRows: I'm a little unsure about this one. But from the sources it looks like it's the same as SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
-                                    table.SplitLate = false;
-                                    table.SplitRows = true;
-
-                                    if (previousIsParagraph)
-                                        table.SpacingBefore = 6f; // magic: add default spacing before table
-
-                                    //table.KeepRowsTogether(0);
-
-                                    previousIsParagraph = false;
+                                    buildTablePostProcess((iTSPdf.PdfPTable)element, ref previousIsParagraph);
                                 }
                                 else if (element.GetType() == typeof(iTSText.Paragraph))
                                 {
@@ -368,6 +350,13 @@ namespace DocxToPdf
                                     //}
 
                                     previousIsParagraph = true;
+
+                                    iTSText.Paragraph pg = element as iTSText.Paragraph;
+                                    if (pg.Count == 1 && pg.ElementAt(0).GetType() == typeof(iTSPdf.PdfPTable))
+                                    { // the table is capsulated in paragraph for table indentation purpose,
+                                      // process it as table
+                                        buildTablePostProcess((iTSPdf.PdfPTable)pg.ElementAt(0), ref previousIsParagraph);
+                                    }
                                 }
 
                                 pdfDoc.Add(element);
@@ -394,6 +383,34 @@ namespace DocxToPdf
                     file.Write(ms.GetBuffer(), 0, ms.GetBuffer().Length);
             }
             ms.Close();
+        }
+
+        /// <summary>
+        /// Post process for iTSPdf.PdfPTable and set previousIsParagraph as false.
+        /// </summary>
+        /// <param name="table"></param>
+        /// <param name="previousIsParagraph">Indicates the previous element is paragraph or not.</param>
+        private void buildTablePostProcess(iTSPdf.PdfPTable table, ref bool previousIsParagraph)
+        {
+            if (table != null)
+            {
+                // http://stackoverflow.com/questions/1364435/itextsharp-splitlate-splitrows
+                // SplitLate = true (default), the table will be split before the next row that does fit on the page.
+                // SplitLate = false, the row that does not fully fit on the page will be split.
+                // SplitRows = true (default), the row that does not fit on a page will be split.
+                // SplitRows = false the row will be omitted.
+                //  SplitLate && SplitRows: A row that does not fit on the page will be started on the next page and eventually split if it does not fit on that page either.
+                //  SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
+                //  !SplitLate && SplitRows: A row that does not fit on the page will be split and continued on the next page and split again if it too large for the next page too.
+                //  !SplitLate && !SplitRows: I'm a little unsure about this one. But from the sources it looks like it's the same as SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
+                table.SplitLate = false;
+                table.SplitRows = true;
+
+                if (previousIsParagraph)
+                    table.SpacingBefore = 6f; // magic: add default spacing before table
+                //table.KeepRowsTogether(0);
+                previousIsParagraph = false;
+            }
         }
 
         /// <summary>
@@ -1757,6 +1774,23 @@ namespace DocxToPdf
                     cell.AddElement(element);
                 }
                 pt.AddCell(cell);
+            }
+
+            // Table indentation
+            Word.TableIndentation ind = this.stHelper.GetAppliedElement<Word.TableIndentation>(table);
+            if (ind != null && ind.Type != null && ind.Type.Value == Word.TableWidthUnitValues.Dxa)
+            {
+                if (ind.Width != null && ind.Width.HasValue)
+                {
+                    // to use pargraph achieve table indentation is tricky, so only 
+                    // apply to the indentation is not zero
+                    float width = Tools.ConvertToPoint(ind.Width.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
+                    iTSText.Paragraph pg = new iTSText.Paragraph();
+                    pg.IndentationLeft = width;
+                    pg.SetLeading(0f, 0f);
+                    pg.Add(pt);
+                    return pg;
+                }
             }
             
             return pt;

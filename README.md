@@ -122,7 +122,7 @@ Below lists current support status of DOCX
  <tr>
   <td>- Numbering & listing</td>
   <td align="center"><font color="blue">V</font></td>
-  <td>Known issues<br>1. Restart is not supported<br>2. Picture as numbering symbol is not supported<br>3. Numbering only supports Decimal/DecimalZero/LowerRoman/UpperRoman/TaiwaneseCountingThousand<br>4. Linked style is not supported</td>
+  <td>Known issues<br>1. Restart is not supported<br>2. Picture as numbering symbol is not supported<br>3. Numbering only supports Decimal, DecimalZero, LowerRoman, UpperRoman, TaiwaneseCountingThousand<br>4. Linked style is not supported</td>
  </tr>
  <tr>
   <td>- Text direction</td>
@@ -159,7 +159,12 @@ Below lists current support status of DOCX
   <td></td>
  </tr>
  <tr>
-  <td>- Indentation</td>
+  <td>- Table indentation</td>
+  <td align="center"><font color="blue">V</font></td>
+  <td></td>
+ </tr>
+ <tr>
+  <td>- Floating table</td>
   <td align="center"><font color="red">X</font></td>
   <td></td>
  </tr>
@@ -196,7 +201,7 @@ Below lists current support status of DOCX
  <tr>
   <td>- Conditional formatting</td>
   <td align="center"><font color="red">X</font></td>
-  <td>i.e. formatting for firstColumn/firstRow/lastColumn/lastRow/noHBand/noVBand</td>
+  <td>i.e. formatting for firstColumn, firstRow, lastColumn, lastRow, noHBand, noVBand</td>
  </tr>
  <tr>
   <td>- Text direction</td>
