@@ -1111,15 +1111,9 @@ namespace DocxToPdf
                 float addNumberingSpaceWidth = pg.IndentationLeft - (pg.IndentationLeft + pg.FirstLineIndent + numbering.GetWidthPoint());
                 if (addNumberingSpaceWidth > 0f)
                 {
-                    iTSText.Chunk space = new iTSText.Chunk(" ", numbering.Font);
-                    space.SetHorizontalScaling(addNumberingSpaceWidth / space.GetWidthPoint());
+                    iTSText.Chunk space = new iTSText.Chunk(" ", new iTSText.Font(numbering.Font));
+                    space.Font.Size = space.Font.CalculatedSize * (addNumberingSpaceWidth / space.GetWidthPoint());
                     pg.Insert(0, space);
-
-                    // iTextSharp 5.5.5 & 5.5.6 bug:
-                    //   when paragraph in tablecell, using SetHorizontalScaling may 
-                    //   results in the first line of paragraph out of the tablecell. It 
-                    //   mostly happens when the first line is almost fill the tablecell
-                    //   width even without adding numbering (latter description is TBC)
                 }
                 pg.Insert(0, numbering);
             }
@@ -1204,13 +1198,6 @@ namespace DocxToPdf
             //  generated on the point of two adjacent texts with different codepoints
             this.setParagraphAutoSpace(paragraph, pg);
 
-            // Line indentation (including numbering process):
-            //  must be called after all chunks are ready and autospace, it's because 
-            //  1. the hanging and first line indentation are based on the font size of 
-            //     the first character of paragraph
-            //  2. to avoid numbering text be processed by autospace
-            this.setParagraphIndentation(paragraph, pg);
-
             // Line spacing
             // *** Trick for iTextSharp to calculate leading ***
             // Leading is calculated by Paragraph.Font.Size, but we added chunks to 
@@ -1225,6 +1212,15 @@ namespace DocxToPdf
             this.setParagraphSpacing(paragraph, pg);
             // TODO: magic: remove first line leading
             //pg.SpacingBefore -= (float)(pg.Font.CalculatedSize * 0.1);
+
+            // Line indentation (including numbering process):
+            //  must be called after all chunks are ready & autospaceDE/DN & Line Spacing,
+            //  it's because 
+            //  1. the hanging and first line indentation are based on the font size of 
+            //     the first character of paragraph
+            //  2. to avoid numbering text be processed by autospace
+            //  3. to avoid the space added for numbering be processed by Line Spacing
+            this.setParagraphIndentation(paragraph, pg);
 
             return pg;
         }
