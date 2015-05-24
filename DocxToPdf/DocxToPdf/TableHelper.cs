@@ -235,8 +235,8 @@ namespace DocxToPdf
             }
             this.rowLen = rowId;
 
-            if (cells.Count <= 0)
-                return;
+            //if (cells.Count <= 0)
+            //    return;
 
             // prepare table conditional formatting (border), which will be used in
             // applyCellBorders() so must be called before applyCellBorders()
@@ -329,26 +329,28 @@ namespace DocxToPdf
                 }
             }
 
-            // re-process each cell's border conflict with its bottom cell
-            for (int i = 0; i < this.cells[this.cells.Count - 1].cellId; i++)
-            {
-                TableHelperCell me = this.GetCellByCellId(i);
-                if (me.Blank) // ignore gridBefore/gridAfter cells
-                    continue;
-                
-                if (me.RowSpan > 1)
-                { // merge bottom border from the last cell of row-spanned cells
-                    TableHelperCell meRowEnd = this.GetCell(me.rowId + (me.RowSpan - 1), me.colId);
-                    if (meRowEnd != null && meRowEnd.Borders != null && meRowEnd.Borders.BottomBorder != null)
-                        StyleHelper.CopyAttributes(me.Borders.BottomBorder, meRowEnd.Borders.BottomBorder);
-                }
+            if (this.cells.Count > 0)
+            { // re-process each cell's border conflict with its bottom cell
+                for (int i = 0; i < this.cells[this.cells.Count - 1].cellId; i++)
+                {
+                    TableHelperCell me = this.GetCellByCellId(i);
+                    if (me.Blank) // ignore gridBefore/gridAfter cells
+                        continue;
 
-                if (me.rowId + me.RowSpan < this.RowLength)
-                { // if me is not at the last row, compare the border with the cell below it
-                    TableHelperCell bottom = this.GetCellByCellId(this.GetCell(me.rowId + me.RowSpan, me.colId).cellId);
-                    bool meWin = compareBorder(me.Borders, bottom.Borders, compareDirection.Vertical);
-                    if (!meWin)
-                        me.Borders.BottomBorder.ClearAllAttributes();
+                    if (me.RowSpan > 1)
+                    { // merge bottom border from the last cell of row-spanned cells
+                        TableHelperCell meRowEnd = this.GetCell(me.rowId + (me.RowSpan - 1), me.colId);
+                        if (meRowEnd != null && meRowEnd.Borders != null && meRowEnd.Borders.BottomBorder != null)
+                            StyleHelper.CopyAttributes(me.Borders.BottomBorder, meRowEnd.Borders.BottomBorder);
+                    }
+
+                    if (me.rowId + me.RowSpan < this.RowLength)
+                    { // if me is not at the last row, compare the border with the cell below it
+                        TableHelperCell bottom = this.GetCellByCellId(this.GetCell(me.rowId + me.RowSpan, me.colId).cellId);
+                        bool meWin = compareBorder(me.Borders, bottom.Borders, compareDirection.Vertical);
+                        if (!meWin)
+                            me.Borders.BottomBorder.ClearAllAttributes();
+                    }
                 }
             }
 
@@ -988,16 +990,19 @@ namespace DocxToPdf
         /// <returns></returns>
         public IEnumerator GetEnumerator()
         {
-            int maxId = this.cells[this.cells.Count - 1].cellId + 1;
-            int id = 0;
-            while (id < maxId)
+            if (this.cells.Count > 0)
             {
-                foreach (TableHelperCell cell in this.cells)
+                int maxId = this.cells[this.cells.Count - 1].cellId + 1;
+                int id = 0;
+                while (id < maxId)
                 {
-                    if (cell.cellId == id)
+                    foreach (TableHelperCell cell in this.cells)
                     {
-                        id++;
-                        yield return cell;
+                        if (cell.cellId == id)
+                        {
+                            id++;
+                            yield return cell;
+                        }
                     }
                 }
             }
