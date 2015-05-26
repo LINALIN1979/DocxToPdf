@@ -184,19 +184,26 @@ namespace DocxToPdf
         }
 
         /// <summary>
-        /// Get printable page width.
+        /// Get printable page width (i.e. page width - left margin - right margin).
         /// </summary>
         public float PrintablePageWidth
         {
             get
             {
-                Word.PageSize size = StyleHelper.GetElement<Word.PageSize>(this.CurrentSectPr);
-                Word.PageMargin margin = StyleHelper.GetElement<Word.PageMargin>(this.CurrentSectPr);
-                return Tools.ConvertToPoint(size.Width.Value, Tools.SizeEnum.TwentiethsOfPoint, 0) -
-                    Tools.ConvertToPoint(margin.Left.Value, Tools.SizeEnum.TwentiethsOfPoint, 0) -
-                    Tools.ConvertToPoint(margin.Right.Value, Tools.SizeEnum.TwentiethsOfPoint, 0);
+                if (_printablePageSectPr != currentSectPr)
+                {
+                    Word.PageSize size = StyleHelper.GetElement<Word.PageSize>(this.CurrentSectPr);
+                    Word.PageMargin margin = StyleHelper.GetElement<Word.PageMargin>(this.CurrentSectPr);
+                    _printablePageWidth = Tools.ConvertToPoint(
+                        size.Width.Value - margin.Left.Value - margin.Right.Value,
+                        Tools.SizeEnum.TwentiethsOfPoint, -1f);
+                    _printablePageSectPr = currentSectPr;
+                }
+                return _printablePageWidth;
             }
         }
+        float _printablePageWidth = 0f;
+        int _printablePageSectPr = -1;
 
         public enum DocDefaultsType
         {
