@@ -95,6 +95,11 @@ Below lists current support status of DOCX
   <td align="center"><font color="blue">V</font></td>
   <td></tr>
  <tr>
+ <tr>
+  <td>Punctuation overflow</td>
+  <td align="center"><font color="blue">V</font></td>
+  <td>Known issues<br>1. For the line with underline, punctuation overflow may not work</tr>
+ <tr>
   <td>Indentation</td>
   <td align="center"><font color="blue">V</font></td>
   <td></td>
