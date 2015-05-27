@@ -74,7 +74,7 @@ namespace DocxToPdf
         /// <returns>The full path of font file or null if can't find.</returns>
         public static String FuzzySearchByName(String name)
         {
-            if (name == null)
+            if (name == null || illegalFontNames.Contains(name))
                 return null;
 
             String path = null;
@@ -98,6 +98,12 @@ namespace DocxToPdf
             }
             return path;
         }
+		private static string[] illegalFontNames = {
+            "eastAsia", "cs", "hAnsi", "ascii",
+            "majorBidi", "minorBidi",
+            "majorHAnsi", "minorHAnsi",
+            "majorEastAsia", "minorEastAsia",
+        };
 
         /// <summary>
         /// Create iTextSharp.text.pdf.BaseFont by font name. This method doesn't configure font size, color or any other properties for BaseFont.
