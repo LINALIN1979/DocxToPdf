@@ -98,7 +98,7 @@ namespace DocxToPdf
             }
             return path;
         }
-		private static string[] illegalFontNames = {
+        private static string[] illegalFontNames = {
             "eastAsia", "cs", "hAnsi", "ascii",
             "majorBidi", "minorBidi",
             "majorHAnsi", "minorHAnsi",
@@ -326,7 +326,7 @@ namespace DocxToPdf
                     bool previousIsParagraph = false;
                     for (int i = 0; i < openXMLList.Count; i++)
                     {
-                        iTSText.IElement element = this.Dispatcher(openXMLList[i]);
+                        iTSText.IElement element = this.Dispatcher(openXMLList[i], this.stHelper.PrintablePageWidth);
 
                         //try {
                             if (element != null)
@@ -656,15 +656,16 @@ namespace DocxToPdf
         /// Only handle container (i.e. table and paragraph)
         /// </summary>
         /// <param name="item"></param>
+        /// <param name="width"></param>
         /// <returns></returns>
-        public iTSText.IElement Dispatcher(object item)
+        public iTSText.IElement Dispatcher(object item, float width)
         {
             iTSText.IElement element = null;
 
             Type itemtype = item.GetType();
             if (itemtype == typeof(Word.Paragraph))
             {
-                element = BuildParagraph(item as Word.Paragraph);
+                element = BuildParagraph(item as Word.Paragraph, width);
             }
             else if (itemtype == typeof(Word.Table))
             {
@@ -1142,7 +1143,156 @@ namespace DocxToPdf
             }
         }
 
-        public iTSText.IElement BuildParagraph(Word.Paragraph paragraph)
+        private static string simplifiedChinesePunctuations = "!%),.:;>?]}¢°·ˇ’”‰′″℃∶、。〃〉》」』】〕〗〞﹚﹜﹞！＂％＇），．：；？］｝￠";
+        private static string traditionalChinesePunctuations = "!),.:;?]}’”′、。〉》」』】〕〞﹚﹜﹞！），．：；？］｝";
+        private static string japanesePunctuations = ",.’”、。」』】），．］｝｡､";
+        private static string koreanPunctuations = "!%),.:;?]}¢°’”′″℃〉》」』】〕！％），．：；？］｝￠";
+
+        /// <summary>
+        /// Handle punctuation overflow.
+        /// </summary>
+        /// <param name="paragraph"></param>
+        /// <param name="pg"></param>
+        /// <param name="width"></param>
+        private void setParagraphOverflowPunc(Word.Paragraph paragraph, iTSText.Paragraph pg, float width)
+        {
+            Word.OverflowPunctuation overFlowPunc = this.stHelper.GetAppliedElement<Word.OverflowPunctuation>(paragraph);
+            bool ofp = (overFlowPunc == null) ? true : (overFlowPunc.Val == null) ? true : overFlowPunc.Val.Value; // omitted means true, different from other toggle property
+
+            if (!ofp) return;
+
+            // must have enough space for overflowPunc
+            if (width - (pg.IndentationLeft + pg.FirstLineIndent) - pg.IndentationRight < (2 * pg.Font.CalculatedSize) ||
+                width - pg.IndentationLeft - pg.IndentationRight < (2 * pg.Font.CalculatedSize))
+                return;
+
+            float maxLineWidth = width - (pg.IndentationLeft + pg.FirstLineIndent) - pg.IndentationRight;
+            float lineWidth = 0f;
+            int lineChunkIndex = 0;
+            int lineChunkContentIndex = 0;
+            for (int i = 0; i < pg.Chunks.Count; i++)
+            {
+                float chunkWidth = pg.Chunks[i].GetWidthPoint();
+                if ((lineWidth + chunkWidth) - maxLineWidth > 0.001f)
+                {
+                    for (int j = 0; j < pg.Chunks[i].Content.Length; j++)
+                    {   // do not use variable to cache pg.Chunks[i] because
+                        // "i" will be changed during the process
+                        char ch = pg.Chunks[i].Content[j];
+                        float chWidth = pg.Chunks[i].Font.GetCalculatedBaseFont(true)
+                            .GetWidthPoint(ch, pg.Chunks[i].Font.CalculatedSize) * pg.Chunks[i].HorizontalScaling;
+                        if ((lineWidth + chWidth) - maxLineWidth > 0.001f)
+                        {   // Check c.Content[j] is punctuation or not
+                            //   if yes, overflowPunc
+                            //   if no, go on
+                            if (simplifiedChinesePunctuations.Contains(ch) || traditionalChinesePunctuations.Contains(ch) ||
+                                japanesePunctuations.Contains(ch) || koreanPunctuations.Contains(ch))
+                            { // punctuation, adjust the chunks width
+                                IList<iTSText.Chunk> adjustedChunks = adjustChunksWidth(pg.Chunks, lineChunkIndex, lineChunkContentIndex, i, j, maxLineWidth - 0.05f);
+                                int diffLen = adjustedChunks.Count - pg.Chunks.Count;
+                                pg.Clear();
+                                pg.AddRange(adjustedChunks);
+
+                                i += diffLen;
+                                j = -1;
+                                lineWidth = 0f;
+                                lineChunkIndex = i;
+                                lineChunkContentIndex = 0;
+                            }
+                            else
+                            { // not punctuation, move to next line
+                                lineChunkIndex = i;
+                                lineChunkContentIndex = j;
+                                lineWidth = chWidth;
+                                maxLineWidth = width - pg.IndentationLeft - pg.IndentationRight;
+                            }
+                        }
+                        else
+                            lineWidth += chWidth;
+                    }
+                }
+                else
+                    lineWidth += chunkWidth;
+            }
+        }
+
+        /// <summary>
+        /// Adjust parts of the chunks to meet a specific width.
+        /// </summary>
+        /// <param name="chunks"></param>
+        /// <param name="chunkStartIndex">Index of the start of adjusted chunks</param>
+        /// <param name="chunkStartContentIndex">Index of the start (included)</param>
+        /// <param name="chunkEndIndex">Index of the end of adjusted chunks</param>
+        /// <param name="chunkEndContentIndex">Index of the end (included)</param>
+        /// <param name="width">The max width for chunks.</param>
+        private IList<iTSText.Chunk> adjustChunksWidth(IList<iTSText.Chunk> chunks,
+            int chunkStartIndex, int chunkStartContentIndex,
+            int chunkEndIndex, int chunkEndContentIndex, float width)
+        {
+            if (chunkStartIndex == chunkEndIndex)
+            {
+                iTSText.Chunk chunkStart = chunks[chunkStartIndex];
+                iTSText.Chunk tmp1 = new iTSText.Chunk(chunkStart.Content.Substring(0, chunkStartContentIndex), new iTSText.Font(chunkStart.Font));
+                tmp1.SetHorizontalScaling(chunkStart.HorizontalScaling);
+                iTSText.Chunk tmp2 = new iTSText.Chunk(chunkStart.Content.Substring(chunkStartContentIndex, chunkEndContentIndex - chunkStartContentIndex + 1), new iTSText.Font(chunkStart.Font));
+                tmp2.SetHorizontalScaling(chunkStart.HorizontalScaling);
+                iTSText.Chunk tmp3 = new iTSText.Chunk(chunkStart.Content.Substring(chunkEndContentIndex + 1), new iTSText.Font(chunkStart.Font));
+                tmp3.SetHorizontalScaling(chunkStart.HorizontalScaling);
+                chunks.RemoveAt(chunkStartIndex);
+
+                float ratio = width / tmp2.GetWidthPoint();
+                tmp2.SetHorizontalScaling(ratio);
+
+                chunks.Insert(chunkStartIndex, tmp3);
+                chunks.Insert(chunkStartIndex, tmp2);
+                chunks.Insert(chunkStartIndex, tmp1);
+            }
+            else
+            {
+                iTSText.Chunk chunkStart = chunks[chunkStartIndex];
+                iTSText.Chunk chunkEnd = chunks[chunkEndIndex];
+
+                iTSText.Chunk tmp3 = new iTSText.Chunk(chunkEnd.Content.Substring(0, chunkEndContentIndex + 1), new iTSText.Font(chunkEnd.Font));
+                tmp3.SetHorizontalScaling(chunkEnd.HorizontalScaling);
+                iTSText.Chunk tmp4 = new iTSText.Chunk(chunkEnd.Content.Substring(chunkEndContentIndex + 1), new iTSText.Font(chunkEnd.Font));
+                tmp4.SetHorizontalScaling(chunkEnd.HorizontalScaling);
+                chunks.RemoveAt(chunkEndIndex);
+                chunks.Insert(chunkEndIndex, tmp4);
+
+                iTSText.Chunk tmp1 = new iTSText.Chunk(chunkStart.Content.Substring(0, chunkStartContentIndex), new iTSText.Font(chunkStart.Font));
+                tmp1.SetHorizontalScaling(chunkStart.HorizontalScaling);
+                iTSText.Chunk tmp2 = new iTSText.Chunk(chunkStart.Content.Substring(chunkStartContentIndex), new iTSText.Font(chunkStart.Font));
+                tmp2.SetHorizontalScaling(chunkStart.HorizontalScaling);
+                chunks.RemoveAt(chunkStartIndex);
+                chunks.Insert(chunkStartIndex, tmp1);
+
+                // Chunks width before adjustment
+                float chunksWidth = tmp2.GetWidthPoint() + tmp3.GetWidthPoint();
+                for (int i = chunkStartIndex + 1; i < chunkEndIndex; i++)
+                    chunksWidth += chunks[i].GetWidthPoint();
+
+                float ratio = width / chunksWidth;
+
+                // Adjust chunks width
+                tmp2.SetHorizontalScaling(ratio);
+                tmp3.SetHorizontalScaling(ratio);
+                for (int i = chunkStartIndex + 1; i < chunkEndIndex; i++)
+                    chunks[i].SetHorizontalScaling(ratio);
+
+                chunks.Insert(chunkEndIndex, tmp3);
+                chunks.Insert(chunkStartIndex + 1, tmp2);
+            }
+
+            // Remove empty chunks
+            for (int i = chunks.Count - 1; i >= 0; i--)
+            {
+                if (chunks[i].Content.Length == 0)
+                    chunks.RemoveAt(i);
+            }
+            return chunks;
+        }
+
+        public iTSText.IElement BuildParagraph(Word.Paragraph paragraph, float width)
         {
             if (paragraph == null)
                 return null;
@@ -1244,6 +1394,9 @@ namespace DocxToPdf
             //  2. to avoid numbering text be processed by autospace
             //  3. to avoid the space added for numbering be processed by Line Spacing
             this.setParagraphIndentation(paragraph, pg);
+
+            // Punctuation overflow
+            this.setParagraphOverflowPunc(paragraph, pg, width);
 
             return pg;
         }
@@ -1602,15 +1755,14 @@ namespace DocxToPdf
             TableHelper tblHelper = new TableHelper();
             if (this.stHelper != null)
                 tblHelper.StHelper = this.stHelper;
-            tblHelper.CellChildElementsProc += this.Dispatcher;
             tblHelper.ParseTable(table);
 
             // ====== Prepare iTextSharp PdfPTable ======
 
             // Set table width
             iTSPdf.PdfPTable pt = new iTSPdf.PdfPTable(tblHelper.ColumnLength);
-            pt.TotalWidth = tblHelper.ColumnWidth.Sum();
-            pt.SetWidths(tblHelper.ColumnWidth);
+            pt.TotalWidth = tblHelper.TableColumnsWidth.Sum();
+            pt.SetWidths(tblHelper.TableColumnsWidth);
             pt.LockedWidth = true; // use pt.TotalWidth rather than pt.WidthPercentage (iTextSharp default is WidthPercentage)
 
             // Table justification
@@ -1757,10 +1909,21 @@ namespace DocxToPdf
                     }
                     //cell.Border = iTSText.Rectangle.BOX; // TODO: for debug
                 }
+                // process Word elements
+                List<iTSText.IElement> elements = new List<iTSText.IElement>();
+                if (pcell.cell != null)
+                {
+                    float width = tblHelper.GetCellWidth(pcell) - cell.PaddingLeft - cell.PaddingRight;
+                    foreach (OpenXmlElement element in pcell.cell.Elements())
+                    {
+                        iTSText.IElement em = this.Dispatcher(element, width);
+                        if (em != null) elements.Add(em);
+                    }
+                }
                 // add elements to cell
                 bool adjustPadding = false; // magic: simulate Word cell padding
                 cell.AddElement(new iTSText.Paragraph(0f, "\u00A0")); // magic: to allow Paragraph.SpacingBefore take effect
-                foreach (iTSText.IElement element in pcell.elements)
+                foreach (iTSText.IElement element in elements)
                 {
                     if (element.GetType() == typeof(iTSText.Paragraph))
                     {
@@ -1787,9 +1950,7 @@ namespace DocxToPdf
             if (ind != null && ind.Type != null && ind.Type.Value == Word.TableWidthUnitValues.Dxa)
             {
                 if (ind.Width != null && ind.Width.HasValue)
-                {
-                    // to use pargraph achieve table indentation is tricky, so only 
-                    // apply to the indentation is not zero
+                { // Use the trick of wrap table into pargraph to achieve table indentation
                     float width = Tools.ConvertToPoint(ind.Width.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
                     iTSText.Paragraph pg = new iTSText.Paragraph();
                     pg.IndentationLeft = width;
@@ -1825,7 +1986,7 @@ namespace DocxToPdf
             {
                 foreach (OpenXmlElement element in hdrpt.Header.Elements())
                 {
-                    iTSText.IElement t = this.Dispatcher(element);
+                    iTSText.IElement t = this.Dispatcher(element, this.stHelper.PrintablePageWidth);
                     if (t != null)
                         ret.Add(t);
                 }
@@ -1835,6 +1996,7 @@ namespace DocxToPdf
 
         /// <summary>
         /// Get the height of a set of IElements outupt, must provide output width for reference.
+        /// This function is called before pdfDoc created, so it must create a PDF document on the fly for calculation.
         /// </summary>
         /// <param name="contents"></param>
         /// <param name="width"></param>

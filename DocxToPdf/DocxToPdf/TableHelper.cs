@@ -44,7 +44,6 @@ namespace DocxToPdf
 
         public Word.TableRow row = null; // point to Word.TableRow
         public Word.TableCell cell = null; // point to Word.TableCell
-        public List<iTSText.IElement> elements = new List<iTSText.IElement>();
 
         public Word.TableCellBorders Borders = null;
 
@@ -84,8 +83,6 @@ namespace DocxToPdf
 
     class TableHelper : IEnumerable
     {
-        public delegate iTSText.IElement CellChildElementsHandler(OpenXmlElement element);
-
         private List<TableHelperCell> cells = new List<TableHelperCell>();
         private StyleHelper styleHelper = null;
         private Word.Table table = null;
@@ -95,18 +92,13 @@ namespace DocxToPdf
         // ------
         // Below variables are assigned in ParseTable()
         private Word.TableBorders condFmtbr = null;
-        private float[] columnWidth = null; // after adjustTableColumnsWidth()
+        private float[] tableColumnsWidth = null; // after adjustTableColumnsWidth()
         // ------
 
         /// <summary>
-        /// Get a float array which indicates all the table column width. This array is only availabe after ParseTable() got called.
+        /// Get a float array which indicates all the table column width in points. This array is only availabe after ParseTable() got called.
         /// </summary>
-        public float[] ColumnWidth { get { return this.columnWidth; } }
-
-        /// <summary>
-        /// Handle OpenXML child elements in cell (e.g. paragraph or table), called in ParseTable().
-        /// </summary>
-        public event CellChildElementsHandler CellChildElementsProc;
+        public float[] TableColumnsWidth { get { return this.tableColumnsWidth; } }
 
         public StyleHelper StHelper
         {
@@ -118,12 +110,13 @@ namespace DocxToPdf
 
         public void ParseTable(Word.Table t)
         {
-            this.table = t;
-
-            if (this.table == null)
+            if (t == null)
                 return;
 
-            this.colLen = this.getTableGridCols(table).Count();
+            this.table = t;
+            this.tableColumnsWidth = this.getTableGridCols(this.table);
+            this.colLen = this.tableColumnsWidth.Count();
+
             int cellId = 0;
             int rowId = 0;
             foreach (Word.TableRow row in table.Elements<Word.TableRow>())
@@ -187,16 +180,6 @@ namespace DocxToPdf
                     }
                     basecell.cellId = _cellId;
 
-                    // Handle OpenXML child elements
-                    if (this.CellChildElementsProc != null)
-                    {
-                        foreach (OpenXmlElement element in col.Elements())
-                        {
-                            iTSText.IElement em = this.CellChildElementsProc(element);
-                            if (em != null) basecell.elements.Add(em);
-                        }
-                    }
-
                     cells.Add(basecell);
                     colId++; // increase for each cells.Add()
                     Debug.Write(String.Format("{0:X} ", _cellId));
@@ -235,15 +218,15 @@ namespace DocxToPdf
             }
             this.rowLen = rowId;
 
-            //if (cells.Count <= 0)
-            //    return;
+            // ====== Adjust table columns width by their content ======
+
+            this.adjustTableColumnsWidth();
+
+            // ====== Resolve cell border conflict ======
 
             // prepare table conditional formatting (border), which will be used in
             // applyCellBorders() so must be called before applyCellBorders()
             this.rollingUpTableBorders();
-
-            // ====== Resolve cell border conflict ======
-
             for (int r = 0; r < this.RowLength; r++)
             {
                 // The following handles the situation where
@@ -270,9 +253,10 @@ namespace DocxToPdf
                     int colspan = this.GetColSpan(me.cellId);
                     int rowspan = this.GetRowSpan(me.cellId);
 
+                    // Process the cells at the right side of me
+                    //   Can bypass column-spanned cells because they never exist
                     if ((c + (colspan - 1) + 1) < this.ColumnLength) // not last column
                     {
-                        // get the cell at the right side of me
                         List<TableHelperCell> rights = new List<TableHelperCell>();
                         for (int i = 0; i < rowspan; i++)
                         {
@@ -300,10 +284,10 @@ namespace DocxToPdf
                         }
                     }
 
-                    // can't bypass row-spanned cells because they still have tcBorders property
+                    // Process the cells below me
+                    //   Can't bypass row-spanned cells because they still have tcBorders property
                     if ((r + 1) < this.RowLength) // not last row
                     {
-                        // get the cell below me
                         List<TableHelperCell> bottoms = new List<TableHelperCell>();
                         for (int i = 0; i < colspan; i++)
                         {
@@ -353,10 +337,6 @@ namespace DocxToPdf
                     }
                 }
             }
-
-            // ====== Adjust table columns width by their content ======
-
-            this.adjustTableColumnsWidth();
         }
 
         private enum compareDirection { Horizontal, Vertical, }
@@ -476,8 +456,6 @@ namespace DocxToPdf
         {
             if (this.table == null) return;
 
-            this.columnWidth = this.getTableGridCols(this.table);
-
             // Get table total width
             float totalWidth = -1f;
             bool autoWidth = false;
@@ -510,9 +488,9 @@ namespace DocxToPdf
             Console.WriteLine("Table total width: " + totalWidth);
 
             if (!autoWidth)
-                scaleTableColumnsWidth(ref this.columnWidth, totalWidth);
+                scaleTableColumnsWidth(ref this.tableColumnsWidth, totalWidth);
             else
-                totalWidth = this.columnWidth.Sum();
+                totalWidth = this.tableColumnsWidth.Sum();
 
             for (int i = 0; i < this.RowLength; i++)
             {
@@ -559,11 +537,11 @@ namespace DocxToPdf
                 edgeEnd = skipGridsBefore;
                 for (; j < edgeEnd; j++)
                     // deduce specific columns width from required width
-                    skipGridsBeforeWidth -= this.columnWidth[j];
+                    skipGridsBeforeWidth -= this.tableColumnsWidth[j];
                 if (skipGridsBeforeWidth > 0f)
                     // if required width is larger than the total width of specific columns,
                     // the remaining required width adds to the last specific column 
-                    this.columnWidth[edgeEnd - 1] += skipGridsBeforeWidth;
+                    this.tableColumnsWidth[edgeEnd - 1] += skipGridsBeforeWidth;
 
                 // ------
                 // cells
@@ -576,11 +554,11 @@ namespace DocxToPdf
                         switch (cellWidth.Type.Value)
                         {
                             case Word.TableWidthUnitValues.Auto:
-                                // TODO: calculate the items width
-                                if (cellsInRow[j].elements.Count > 0)
-                                {
-                                    iTSText.IElement element = cellsInRow[j].elements[0];
-                                }
+                                //// TODO: calculate the items width
+                                //if (cellsInRow[j].elements.Count > 0)
+                                //{
+                                //    iTSText.IElement element = cellsInRow[j].elements[0];
+                                //}
                                 break;
                             case Word.TableWidthUnitValues.Nil:
                             default:
@@ -611,11 +589,11 @@ namespace DocxToPdf
                     edgeEnd = j + spanCount;
                     for (; j < edgeEnd; j++)
                         // deduce specific columns width from required width
-                        reqCellWidth -= this.columnWidth[j];
+                        reqCellWidth -= this.tableColumnsWidth[j];
                     if (reqCellWidth > 0f)
                         // if required width is larger than the total width of specific columns,
                         // the remaining required width adds to the last specific column 
-                        this.columnWidth[edgeEnd - 1] += reqCellWidth;
+                        this.tableColumnsWidth[edgeEnd - 1] += reqCellWidth;
                 }
 
                 // ------
@@ -623,16 +601,16 @@ namespace DocxToPdf
                 edgeEnd = j + skipGridsAfter;
                 for (; j < edgeEnd; j++)
                     // deduce specific columns width from required width
-                    skipGridsAfterWidth -= this.columnWidth[j];
+                    skipGridsAfterWidth -= this.tableColumnsWidth[j];
                 if (skipGridsAfterWidth > 0f)
                     // if required width is larger than the total width of specific columns,
                     // the remaining required width adds to the last specific column 
-                    this.columnWidth[edgeEnd - 1] += skipGridsAfterWidth;
+                    this.tableColumnsWidth[edgeEnd - 1] += skipGridsAfterWidth;
 
                 if (!autoWidth) // fixed table width, adjust width to fit in
-                    scaleTableColumnsWidth(ref this.columnWidth, totalWidth);
+                    scaleTableColumnsWidth(ref this.tableColumnsWidth, totalWidth);
                 else // auto table width
-                    totalWidth = this.columnWidth.Sum();
+                    totalWidth = this.tableColumnsWidth.Sum();
             }
         }
 
@@ -1008,48 +986,19 @@ namespace DocxToPdf
             }
         }
 
-        private float getCellWidth(Word.TableCell cell)
+        /// <summary>
+        /// Get cell width, this should be called after ParseTable().
+        /// </summary>
+        /// <param name="cellId"></param>
+        /// <returns></returns>
+        public float GetCellWidth(TableHelperCell cell)
         {
             float ret = 0f;
-
-            if (cell == null)
-                return ret;
-
-            Word.TableCellWidth width = this.styleHelper.GetAppliedElement<Word.TableCellWidth>(cell);
-            if (width != null && width.Type != null)
+            if (cell != null)
             {
-                switch (width.Type.Value)
-                {
-                    // TODO: don't know how to calculate auto cell width
-                    case Word.TableWidthUnitValues.Nil:
-                    case Word.TableWidthUnitValues.Auto: // fits the contents
-                    default:
-                        Word.Table table = cell.Parent.Parent as Word.Table;
-                        Word.TableWidth tableWidth = this.styleHelper.GetAppliedElement<Word.TableWidth>(table);
-                        if (tableWidth != null && tableWidth.Type != null)
-                        {
-                            if (tableWidth.Type.Value == Word.TableWidthUnitValues.Dxa)
-                                ret = Tools.ConvertToPoint(tableWidth.Width.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
-                        }
-                        if (ret <= 0f)
-                            ret = this.getTableGridCols(table).Sum();
-                        break;
-                    case Word.TableWidthUnitValues.Dxa:
-                        if (cell != null)
-                            ret = Tools.ConvertToPoint(width.Width.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
-                        break;
-                    case Word.TableWidthUnitValues.Pct:
-                        if (width.Width != null)
-                        {
-                            if (cell.Parent.Parent.Parent.GetType() == typeof(Word.Body)) // use page size as width
-                                ret = this.styleHelper.PrintablePageWidth * Tools.Percentage(width.Width.Value);
-                            else // still in table, get cell width
-                                ret = this.getCellWidth(cell.Parent.Parent.Parent as Word.TableCell) * Tools.Percentage(width.Width.Value);
-                        }
-                        break;
-                }
+                for (int i = 0; i < cell.ColSpan; i++)
+                    ret += this.TableColumnsWidth[cell.colId + i];
             }
-
             return ret;
         }
     }
