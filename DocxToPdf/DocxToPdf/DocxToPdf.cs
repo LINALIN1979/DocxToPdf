@@ -323,53 +323,15 @@ namespace DocxToPdf
                     }
 
                     List<OpenXmlElement> openXMLList = body.Elements().ToList().GetRange(previousIndex, currentIndex - previousIndex);
-                    bool previousIsParagraph = false;
+                    ContainerPostProcess postProc = new ContainerPostProcess();
                     for (int i = 0; i < openXMLList.Count; i++)
                     {
                         iTSText.IElement element = this.Dispatcher(openXMLList[i], this.stHelper.PrintablePageWidth);
-
-                        //try {
-                            if (element != null)
-                            {
-                                if (element.GetType() == typeof(iTSPdf.PdfPTable))
-                                {
-                                    buildTablePostProcess((iTSPdf.PdfPTable)element, ref previousIsParagraph);
-                                }
-                                else if (element.GetType() == typeof(iTSText.Paragraph))
-                                {
-                                    //// if the last element of paragraph is to create a new 
-                                    //// page AND reach the end of using CURRENT sectPr
-                                    ////  ==>
-                                    //// the new page shouldn't be created because the NEXT 
-                                    //// sectPr will create a new page automatically
-                                    //if (i == openXMLList.Count - 1)
-                                    //{
-                                    //    iTSText.Paragraph ph = element as iTSText.Paragraph;
-                                    //    int lastIndex = ph.Count - 1;
-                                    //    iTSText.Chunk last = ph.GetRange(lastIndex, 1)[0] as iTSText.Chunk;
-                                    //    //iTSText.Chunk last = ph.ElementAt(lastIndex) as iTSText.Chunk; // iTextSharp 4.1.6 doesn't support ElementAt operation
-                                    //    if (last != null && last.Attributes != null &&
-                                    //        last.Attributes.Equals(iTSText.Chunk.NEXTPAGE.Attributes))
-                                    //    {
-                                    //        ph.RemoveAt(lastIndex);
-                                    //    }
-                                    //}
-
-                                    previousIsParagraph = true;
-
-                                    iTSText.Paragraph pg = element as iTSText.Paragraph;
-                                    if (pg.Count == 1 && pg.ElementAt(0).GetType() == typeof(iTSPdf.PdfPTable))
-                                    { // the table is capsulated in paragraph for table indentation purpose,
-                                      // process it as table
-                                        buildTablePostProcess((iTSPdf.PdfPTable)pg.ElementAt(0), ref previousIsParagraph);
-                                    }
-                                }
-
-                                pdfDoc.Add(element);
-                            }
-                        //}  catch (iTSText.DocumentException e) {
-                        //    MessageBox.Show(e.StackTrace);
-                        //}
+                        if (element != null)
+                        {
+                            postProc.Proc(element);
+                            pdfDoc.Add(element);
+                        }
                     }
                     previousIndex = currentIndex + 1;
 
@@ -392,30 +354,79 @@ namespace DocxToPdf
         }
 
         /// <summary>
-        /// Post process for iTSPdf.PdfPTable and set previousIsParagraph as false.
+        /// Before adding container (i.e. table and paragraph) to document, call this call for post process the container.
         /// </summary>
-        /// <param name="table"></param>
-        /// <param name="previousIsParagraph">Indicates the previous element is paragraph or not.</param>
-        private void buildTablePostProcess(iTSPdf.PdfPTable table, ref bool previousIsParagraph)
+        private class ContainerPostProcess
         {
-            if (table != null)
-            {
-                // http://stackoverflow.com/questions/1364435/itextsharp-splitlate-splitrows
-                // SplitLate = true (default), the table will be split before the next row that does fit on the page.
-                // SplitLate = false, the row that does not fully fit on the page will be split.
-                // SplitRows = true (default), the row that does not fit on a page will be split.
-                // SplitRows = false the row will be omitted.
-                //  SplitLate && SplitRows: A row that does not fit on the page will be started on the next page and eventually split if it does not fit on that page either.
-                //  SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
-                //  !SplitLate && SplitRows: A row that does not fit on the page will be split and continued on the next page and split again if it too large for the next page too.
-                //  !SplitLate && !SplitRows: I'm a little unsure about this one. But from the sources it looks like it's the same as SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
-                table.SplitLate = false;
-                table.SplitRows = true;
+            /// <summary>
+            /// Keep the previous element is Paragraph or not.
+            /// </summary>
+            private iTSText.Paragraph prevPg = null;
 
-                if (previousIsParagraph)
-                    table.SpacingBefore = 6f; // magic: add default spacing before table
-                //table.KeepRowsTogether(0);
-                previousIsParagraph = false;
+            /// <summary>
+            /// Process the container.
+            /// </summary>
+            /// <param name="element"></param>
+            public void Proc(iTSText.IElement element)
+            {
+                if (element != null)
+                {
+                    if (element.GetType() == typeof(iTSPdf.PdfPTable))
+                    {
+                        buildTablePostProcess((iTSPdf.PdfPTable)element);
+                        prevPg = null;
+                    }
+                    else if (element.GetType() == typeof(iTSText.Paragraph))
+                    {
+                        iTSText.Paragraph pg = element as iTSText.Paragraph;
+                        if (pg.Count == 1 && pg.ElementAt(0).GetType() == typeof(iTSPdf.PdfPTable))
+                        { // the table is capsulated in paragraph for table indentation purpose,
+                            // process it as table
+                            buildTablePostProcess((iTSPdf.PdfPTable)pg.ElementAt(0));
+                            prevPg = null;
+                        }
+                        else
+                        { // is paragraph
+                            // Handle the space between adjacent paragraphs
+                            pg.SpacingBefore -= (pg.TotalLeading - pg.Font.CalculatedSize);
+                            if (prevPg != null)
+                            {
+                                float t = pg.TotalLeading - pg.Font.CalculatedSize + pg.SpacingBefore;
+                                if (t > prevPg.SpacingAfter)
+                                    pg.SpacingBefore += (t - prevPg.SpacingAfter);
+                            }
+                            pg.SpacingAfter += (pg.TotalLeading - pg.Font.CalculatedSize);
+
+                            prevPg = pg;
+                        }
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Post process for iTSPdf.PdfPTable.
+            /// </summary>
+            /// <param name="table"></param>
+            private void buildTablePostProcess(iTSPdf.PdfPTable table)
+            {
+                if (table != null)
+                {
+                    // http://stackoverflow.com/questions/1364435/itextsharp-splitlate-splitrows
+                    // SplitLate = true (default), the table will be split before the next row that does fit on the page.
+                    // SplitLate = false, the row that does not fully fit on the page will be split.
+                    // SplitRows = true (default), the row that does not fit on a page will be split.
+                    // SplitRows = false the row will be omitted.
+                    //  SplitLate && SplitRows: A row that does not fit on the page will be started on the next page and eventually split if it does not fit on that page either.
+                    //  SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
+                    //  !SplitLate && SplitRows: A row that does not fit on the page will be split and continued on the next page and split again if it too large for the next page too.
+                    //  !SplitLate && !SplitRows: I'm a little unsure about this one. But from the sources it looks like it's the same as SplitLate && !SplitRows: A row that does not fit on the page will be started on the next page and omitted if it does not fit on that page either.
+                    //table.SplitLate = false;
+                    //table.SplitRows = true;
+
+                    //if (previousIsParagraph)
+                    //    table.SpacingBefore = 6f; // magic: add default spacing before table
+                    //table.KeepRowsTogether(0);
+                }
             }
         }
 
@@ -683,8 +694,10 @@ namespace DocxToPdf
             End,
         }
 
+        private float wordDefaultAtLeastLineSpacing = 1.3f; // magic: word default leading
+
         /// <summary>
-        /// Set paragraph's spacingBefore & spacingAfter. Before calling this method, make sure pg.Font.Size was set.
+        /// Set paragraph's linespacing, spacingBefore & spacingAfter. Before calling this method, make sure pg.Font.Size was set.
         /// </summary>
         /// <param name="paragraph"></param>
         /// <param name="pg"></param>
@@ -753,11 +766,11 @@ namespace DocxToPdf
                     {
                         if (space.LineRule != null && space.Line != null && space.LineRule.HasValue && space.Line.HasValue)
                         {
+                            
                             switch (space.LineRule.Value)
                             {
                                 case Word.LineSpacingRuleValues.AtLeast: // interpreted as twip
                                     float spacePoint = Tools.ConvertToPoint(space.Line.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
-                                    float wordDefaultAtLeastLineSpacing = 1.3f; // magic: word default leading
                                     if (spacePoint >= (pg.Font.CalculatedSize * wordDefaultAtLeastLineSpacing))
                                         linespacing = spacePoint;
                                     else
@@ -767,7 +780,7 @@ namespace DocxToPdf
                                     linespacing = Tools.ConvertToPoint(space.Line.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
                                     break;
                                 case Word.LineSpacingRuleValues.Auto: // interpreted as 240th of a line
-                                    linespacing = (Convert.ToSingle(space.Line.Value) / 240) * pg.Font.CalculatedSize;
+                                    linespacing = (Convert.ToSingle(space.Line.Value) / 240) * pg.Font.CalculatedSize * wordDefaultAtLeastLineSpacing;
                                     break;
                             }
                         }
@@ -778,7 +791,7 @@ namespace DocxToPdf
                         if (space.After != null && space.After.HasValue)
                             spacingAfter = Tools.ConvertToPoint(space.After.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
                         else if (space.AfterLines != null && space.AfterLines.HasValue)
-                            spacingAfter = Tools.ConvertToPoint(space.After.Value, Tools.SizeEnum.TwoHundredFoutiesthOfLine, pg.Font.CalculatedSize);
+                            spacingAfter = (Convert.ToSingle(space.After.Value) / 100) * pg.Font.CalculatedSize;
                     }
 
                     if (spacingBefore < 0f) // only set when never set before
@@ -786,7 +799,7 @@ namespace DocxToPdf
                         if (space.Before != null && space.Before.HasValue)
                             spacingBefore = Tools.ConvertToPoint(space.Before.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
                         else if (space.BeforeLines != null && space.BeforeLines.HasValue)
-                            spacingBefore = Tools.ConvertToPoint(space.Before.Value, Tools.SizeEnum.TwoHundredFoutiesthOfLine, pg.Font.CalculatedSize);
+                            spacingBefore = (Convert.ToSingle(space.Before.Value) / 100) * pg.Font.CalculatedSize;
                     }
                 }
             }
@@ -1143,6 +1156,8 @@ namespace DocxToPdf
             }
         }
 
+        // https://msdn.microsoft.com/en-us/library/ff532616%28v=office.12%29.aspx
+        // http://en.wikipedia.org/wiki/Line_breaking_rules_in_East_Asian_languages
         private static string simplifiedChinesePunctuations = "!%),.:;>?]}¢°·ˇ’”‰′″℃∶、。〃〉》」』】〕〗〞﹚﹜﹞！＂％＇），．：；？］｝￠";
         private static string traditionalChinesePunctuations = "!),.:;?]}’”′、。〉》」』】〕〞﹚﹜﹞！），．：；？］｝";
         private static string japanesePunctuations = ",.’”、。」』】），．］｝｡､";
@@ -1381,7 +1396,7 @@ namespace DocxToPdf
                     pg.Font.Size = chunk.Font.CalculatedSize;
             // The first parameter is the fixed leading: if you want a leading of 15 no matter which font size is used, you can choose fixed = 15 and multiplied = 0.
             // The second parameter is a factor: for instance if you want the leading to be twice the font size, you can choose fixed = 0 and multiplied = 2. In this case, the leading for a paragraph with font size 12 will be 24, for a font size 10, it will be 20, and son on.
-            pg.SetLeading(0f, 1.5f); // magic: Word default leading
+            pg.SetLeading(0f, wordDefaultAtLeastLineSpacing); // magic: Word default leading
             this.setParagraphSpacing(paragraph, pg);
             // TODO: magic: remove first line leading
             //pg.SpacingBefore -= (float)(pg.Font.CalculatedSize * 0.1);
@@ -2016,8 +2031,15 @@ namespace DocxToPdf
                 iTSPdf.ColumnText ct = new iTSPdf.ColumnText(writer.DirectContent);
                 iTSText.Rectangle rect = new iTSText.Rectangle(0f, 0f, width, 1000f);
                 ct.SetSimpleColumn(rect);
+                ContainerPostProcess postProc = new ContainerPostProcess();
                 foreach (iTSText.IElement t in contents)
-                    ct.AddElement(t);
+                {
+                    if (t != null)
+                    {
+                        postProc.Proc(t);
+                        ct.AddElement(t);
+                    }
+                }
                 float beforeY = ct.YLine;
                 ct.Go(); // do not simulate because no page makes doc.Close() generates exception
                 diff = beforeY - ct.YLine;
@@ -2058,8 +2080,15 @@ namespace DocxToPdf
                         doc.PageSize.Width - doc.RightMargin, // not the width, should be the maximum X coordinate
                         doc.BottomMargin); // not the height, should be the smallest Y coordinate
                     ct.SetSimpleColumn(rect);
-                    foreach (iTSText.IElement e in contents)
-                        ct.AddElement(e);
+                    ContainerPostProcess postProc = new ContainerPostProcess();
+                    foreach (iTSText.IElement t in contents)
+                    {
+                        if (t != null)
+                        {
+                            postProc.Proc(t);
+                            ct.AddElement(t);
+                        }
+                    }
                     ct.Go();
                 }
 
