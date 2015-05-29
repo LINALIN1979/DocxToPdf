@@ -32,8 +32,15 @@ namespace SampleApp
                     MessageBox.Show(this, String.Format("{0} is not a docx file", file));
                 else
                 {
-                    DocxToPdf.DocxToPdf convertor = new DocxToPdf.DocxToPdf(file, file.Replace(".docx", ".pdf"));
-                    processSomething = true;
+                    try
+                    {
+                        DocxToPdf.DocxToPdf convertor = new DocxToPdf.DocxToPdf(file, file.Replace(".docx", ".pdf"));
+                        processSomething = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, ex.Message);
+                    }
                 }
             }
             watch.Stop();
