@@ -178,7 +178,8 @@ namespace DocxToPdf
 
             if (ignoreZeroes)
             {
-                while (Convert.ToInt32(intArr[end].ToString()) == 0)
+                int intArrMax = intArr.Length - 1;
+                while (Convert.ToInt32(intArr[end].ToString()) == 0 && end < intArrMax)
                     end++;
             }
 
