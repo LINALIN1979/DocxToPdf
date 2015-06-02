@@ -3,6 +3,7 @@ using DocumentFormat.OpenXml.Drawing;
 using DocumentFormat.OpenXml.Packaging;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using Word = DocumentFormat.OpenXml.Wordprocessing;
 
@@ -708,6 +709,23 @@ namespace DocxToPdf
                 return hr.Uri.OriginalString;
             else
                 return null;
+        }
+
+        /// <summary>
+        /// Get image by r:id
+        /// </summary>
+        /// <param name="rid">Relationship ID.</param>
+        /// <returns>Return System.Drawing.Image object if found, otherwise return null.</returns>
+        public Image GetImageById(String rid)
+        {
+            OpenXmlPart part = this.doc.MainDocumentPart.GetPartById(rid);
+            if (part != null)
+            {
+                ImagePart img = this.doc.MainDocumentPart.ImageParts.FirstOrDefault(c => c.Uri.Equals(part.Uri));
+                if (img != null)
+                    return Image.FromStream(img.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read));
+            }
+            return null;
         }
 
         /// <summary>

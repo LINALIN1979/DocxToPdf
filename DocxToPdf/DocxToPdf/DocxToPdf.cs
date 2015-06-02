@@ -1467,6 +1467,31 @@ namespace DocxToPdf
                 shapeTypes.FirstOrDefault(c => {return (c.Id != null) ? (id.IndexOf(c.Id.Value, StringComparison.OrdinalIgnoreCase) >= 0) : false; }) : null;
         }
 
+        private iTSText.Image BuildPicture2(Word.Picture pict)
+        {
+            iTSText.Image ret = null;
+
+            if (pict == null)
+                return ret;
+
+            IEnumerable<Vml.Shape> shapes = pict.Descendants<Vml.Shape>();
+            foreach (Vml.Shape shape in shapes)
+            {
+                Vml.ImageData img = shape.Descendants<Vml.ImageData>().FirstOrDefault();
+                if (img != null)
+                {
+                    Image bImg = this.stHelper.GetImageById(img.RelationshipId);
+                    if (bImg != null)
+                    {
+                        ret = iTSText.Image.GetInstance(bImg, System.Drawing.Imaging.ImageFormat.Png);
+                        break;
+                    }
+                }
+            }
+
+            return ret;
+        }
+
         private iTSText.Image BuildPicture(Word.Picture pict)
         {
             iTSText.Image ret = null;
@@ -1726,12 +1751,12 @@ namespace DocxToPdf
                         ret.Add(ch);
                     }
                 }
-                //else if (elementType == typeof(Word.Picture))
-                //{
-                //    iTSText.Image image = BuildPicture((Word.Picture)element);
-                //    if (image != null)
-                //        this.pdfDoc.Add(image);
-                //}
+                else if (elementType == typeof(Word.Picture))
+                {
+                    iTSText.Image image = BuildPicture2((Word.Picture)element);
+                    if (image != null)
+                        ret.Add(new iTSText.Chunk(image, 0f, 0f, true));
+                }
                 //else if (elementType == typeof(AlternateContent))
                 //{
                 //    AlternateContent alternateContent = element as AlternateContent;

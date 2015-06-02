@@ -67,7 +67,12 @@ Below lists current support status of DOCX
   <td>i.e. internal links</td>
  </tr>
  <tr>
-  <td>Picture</td>
+  <td>Embedded photos</td>
+  <td align="center"><font color="blue">V</font></td>
+  <td></td>
+ </tr>
+ <tr>
+  <td>Vector graphics</td>
   <td align="center"><font color="red">X</font></td>
   <td></td>
  </tr>
