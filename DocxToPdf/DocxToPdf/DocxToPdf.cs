@@ -1820,23 +1820,18 @@ namespace DocxToPdf
                 Word.TableRowHeight trHeight = this.stHelper.GetAppliedElement<Word.TableRowHeight>(pcell.row);
                 if (trHeight != null && trHeight.Val != null)
                 {
-                    if (trHeight.Val != null)
-                        minRowHeight = Tools.ConvertToPoint(trHeight.Val.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
+                    float heigthPoints = Tools.ConvertToPoint(trHeight.Val.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
+                    minRowHeight = heigthPoints;
                     try
                     {
                         OpenXmlAttribute hrule = trHeight.GetAttribute("hRule", this.stHelper.NamespaceUri);
-                        if (hrule.Value != null)
-                        {
-                            if (hrule.Value == "exact")
-                                exactRowHeight = Tools.ConvertToPoint(trHeight.Val.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
-                        }
+                        if (hrule.Value == "exact")
+                            exactRowHeight = heigthPoints;                            
                     }
                     catch (Exception) { }
                 }
 
                 iTSPdf.PdfPCell cell = new iTSPdf.PdfPCell(); // composite mode, not text mode
-                if (exactRowHeight > 0f) cell.FixedHeight = exactRowHeight;
-                else if (minRowHeight > 0f) cell.MinimumHeight = minRowHeight;
                 //cell.UseAscender = false; // remove whitespace on top of each cell even padding&leading set to 0, http://stackoverflow.com/questions/9672046/itextsharp-4-1-6-pdf-table-how-to-remove-whitespace-on-top-of-each-cell-pad
                 //cell.UseDescender = true;
                 cell.Rowspan = pcell.RowSpan;
@@ -1961,7 +1956,7 @@ namespace DocxToPdf
                     }
                 }
                 // add elements to cell
-                bool adjustPadding = false; // magic: simulate Word cell padding
+                bool adjustPaddingDone = false; // magic: simulate Word cell padding
                 cell.AddElement(new iTSText.Paragraph(0f, "\u00A0")); // magic: to allow Paragraph.SpacingBefore take effect
                 foreach (iTSText.IElement element in elements)
                 {
@@ -1972,11 +1967,16 @@ namespace DocxToPdf
                         
                         // ------
                         // magic: simulate Word cell padding
-                        if (!adjustPadding)
+                        if (!adjustPaddingDone)
                         {
                             cell.PaddingTop -= (pg.TotalLeading * 0.25f);
                             cell.PaddingBottom += (pg.TotalLeading * 0.25f);
-                            adjustPadding = true;
+                            float contentHeight = pg.TotalLeading + cell.PaddingTop + cell.PaddingBottom;
+                            if (exactRowHeight > 0f)
+                                cell.FixedHeight = (contentHeight > exactRowHeight) ? contentHeight : exactRowHeight;
+                            else if (minRowHeight > 0f)
+                                cell.MinimumHeight = (contentHeight > minRowHeight) ? contentHeight : minRowHeight;
+                            adjustPaddingDone = true;
                         }
                         // ------
                     }
