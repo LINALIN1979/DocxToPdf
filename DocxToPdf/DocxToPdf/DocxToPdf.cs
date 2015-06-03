@@ -1058,24 +1058,32 @@ namespace DocxToPdf
                 numbering = new iTSText.Chunk(text, font);
             }
 
-            Word.Indentation ind = null;
-            // Numbering indentation first
-            if (level != null &&
+            // Indentation apply order: direct formatting > numbering > paragraph property
+            Word.Indentation dirind = (paragraph.ParagraphProperties != null) ?
+                StyleHelper.GetDescendants<Word.Indentation>(paragraph.ParagraphProperties) : null;
+            Word.Indentation numind = (level != null &&
                 level.PreviousParagraphProperties != null &&
-                level.PreviousParagraphProperties.Indentation != null)
-                ind = (Word.Indentation)level.PreviousParagraphProperties.Indentation.CloneNode(true);
-            // Paragraph indentation next, can override numbering indentation
-            Word.Indentation pgind = this.stHelper.GetAppliedElement<Word.Indentation>(paragraph);
+                level.PreviousParagraphProperties.Indentation != null) ?
+                numind = level.PreviousParagraphProperties.Indentation : null;
+            Word.Indentation pgind = (dirind == null) ? 
+                this.stHelper.GetAppliedElement<Word.Indentation>(paragraph) : null;
+            Word.Indentation ind = new Word.Indentation();
             if (pgind != null)
             {
-                if (ind == null)
-                    ind = (Word.Indentation)pgind.CloneNode(true);
-                else
-                {
-                    foreach (OpenXmlAttribute attr in pgind.GetAttributes())
-                        if (attr.Value != null) ind.SetAttribute(attr);
-                }
+                foreach (OpenXmlAttribute attr in pgind.GetAttributes())
+                    if (attr.Value != null) ind.SetAttribute(attr);
             }
+            if (numind != null)
+            {
+                foreach (OpenXmlAttribute attr in numind.GetAttributes())
+                    if (attr.Value != null) ind.SetAttribute(attr);
+            }
+            if (dirind != null)
+            {
+                foreach (OpenXmlAttribute attr in dirind.GetAttributes())
+                    if (attr.Value != null) ind.SetAttribute(attr);
+            }
+
             if (ind != null)
             {
                 // Character Unit of hanging and firstLine indentation are
@@ -1822,13 +1830,13 @@ namespace DocxToPdf
                 {
                     float heigthPoints = Tools.ConvertToPoint(trHeight.Val.Value, Tools.SizeEnum.TwentiethsOfPoint, -1f);
                     minRowHeight = heigthPoints;
-                    try
+
+                    OpenXmlAttribute hrule = trHeight.GetAttributes().FirstOrDefault(c => c.LocalName.ToLower() == "hRule".ToLower());
+                    if (hrule != null)
                     {
-                        OpenXmlAttribute hrule = trHeight.GetAttribute("hRule", this.stHelper.NamespaceUri);
                         if (hrule.Value == "exact")
-                            exactRowHeight = heigthPoints;                            
+                            exactRowHeight = heigthPoints;
                     }
-                    catch (Exception) { }
                 }
 
                 iTSPdf.PdfPCell cell = new iTSPdf.PdfPCell(); // composite mode, not text mode
