@@ -157,10 +157,14 @@ namespace DocxToPdf
             if (doc != null)
             {
                 this.doc = doc;
-                this.docDefaults = this.doc.MainDocumentPart.StyleDefinitionsPart.Styles.Descendants<Word.DocDefaults>().FirstOrDefault();
+                if (this.doc.MainDocumentPart.StyleDefinitionsPart != null)
+                {
+                    this.docDefaults = this.doc.MainDocumentPart.StyleDefinitionsPart.Styles.Descendants<Word.DocDefaults>().FirstOrDefault();
+                    this.styles = this.doc.MainDocumentPart.StyleDefinitionsPart.Styles.Descendants<Word.Style>();
+                }
                 this.sections = this.doc.MainDocumentPart.Document.Body.Descendants<Word.SectionProperties>().ToList();
-                this.styles = this.doc.MainDocumentPart.StyleDefinitionsPart.Styles.Descendants<Word.Style>();
-                this.theme = this.doc.MainDocumentPart.ThemePart;
+                if (this.doc.MainDocumentPart.ThemePart != null)
+                    this.theme = this.doc.MainDocumentPart.ThemePart;
                 if (this.doc.MainDocumentPart.NumberingDefinitionsPart != null &&
                     this.doc.MainDocumentPart.NumberingDefinitionsPart.Numbering != null)
                 {
@@ -177,10 +181,15 @@ namespace DocxToPdf
                         }
                     }
                 }
-                this.hyperlinkRelationships = this.doc.MainDocumentPart.HyperlinkRelationships;
-                Word.Compatibility compat = this.doc.MainDocumentPart.DocumentSettingsPart.Settings.Descendants<Word.Compatibility>().FirstOrDefault();
-                if (compat != null && compat.BalanceSingleByteDoubleByteWidth != null)
-                    this.balanceSingleByteDoubleByteWidth = StyleHelper.GetToggleProperty(compat.BalanceSingleByteDoubleByteWidth);
+                if (this.doc.MainDocumentPart.HyperlinkRelationships != null)
+                    this.hyperlinkRelationships = this.doc.MainDocumentPart.HyperlinkRelationships;
+                if (this.doc.MainDocumentPart.DocumentSettingsPart != null &&
+                    this.doc.MainDocumentPart.DocumentSettingsPart.Settings != null)
+                {
+                    Word.Compatibility compat = this.doc.MainDocumentPart.DocumentSettingsPart.Settings.Descendants<Word.Compatibility>().FirstOrDefault();
+                    if (compat != null && compat.BalanceSingleByteDoubleByteWidth != null)
+                        this.balanceSingleByteDoubleByteWidth = StyleHelper.GetToggleProperty(compat.BalanceSingleByteDoubleByteWidth);
+                }
             }
         }
 
